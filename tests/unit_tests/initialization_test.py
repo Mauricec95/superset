@@ -18,9 +18,11 @@
 import os
 from unittest.mock import MagicMock, patch
 
+import pytest
 from sqlalchemy.exc import OperationalError
 
 from superset.app import AppRootMiddleware, create_app, SupersetApp
+from superset.constants import CHANGE_ME_SECRET_KEY
 from superset.initialization import SupersetAppInitializer
 
 
@@ -257,3 +259,54 @@ class TestCreateAppRoot:
 
         assert isinstance(app.wsgi_app, AppRootMiddleware)
         assert app.wsgi_app.app_root == "/from-param"
+
+
+class TestCheckSecretKey:
+    """Tests for the SECRET_KEY default-value startup validation."""
+
+    @staticmethod
+    def _make_initializer(
+        secret_key: str,
+        *,
+        testing: bool = False,
+        debug: bool = False,
+    ) -> SupersetAppInitializer:
+        mock_app = MagicMock()
+        mock_app.config = {"SECRET_KEY": secret_key, "TESTING": testing}
+        mock_app.debug = debug
+        return SupersetAppInitializer(mock_app)
+
+    @patch("superset.initialization.is_test", return_value=False)
+    def test_raises_runtime_error_when_secret_key_is_default(
+        self, mock_is_test: MagicMock
+    ) -> None:
+        """In a non-test environment, the default SECRET_KEY must abort startup."""
+        app_initializer = self._make_initializer(CHANGE_ME_SECRET_KEY)
+
+        with pytest.raises(RuntimeError) as exc_info:
+            app_initializer.check_secret_key()
+
+        message = str(exc_info.value)
+        assert "SECRET_KEY" in message
+        assert "SUPERSET_SECRET_KEY" in message
+        mock_is_test.assert_called_once()
+
+    @patch("superset.initialization.is_test", return_value=False)
+    def test_does_not_raise_when_secret_key_is_overridden(
+        self,
+        mock_is_test: MagicMock,  # noqa: ARG002
+    ) -> None:
+        """A custom SECRET_KEY must not trigger the validation error."""
+        app_initializer = self._make_initializer("a-strong-and-random-secret-value")
+
+        app_initializer.check_secret_key()
+
+    @patch("superset.initialization.is_test", return_value=False)
+    def test_does_not_raise_when_testing_flag_enabled(
+        self,
+        mock_is_test: MagicMock,  # noqa: ARG002
+    ) -> None:
+        """The default SECRET_KEY is tolerated when the TESTING flag is set."""
+        app_initializer = self._make_initializer(CHANGE_ME_SECRET_KEY, testing=True)
+
+        app_initializer.check_secret_key()

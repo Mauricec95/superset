@@ -19,7 +19,6 @@ from __future__ import annotations
 import contextlib
 import logging
 import os
-import sys
 from typing import Any, Callable, TYPE_CHECKING
 
 import wtforms_json
@@ -661,7 +660,15 @@ class SupersetAppInitializer:  # pylint: disable=too-many-public-methods
                 return
             log_default_secret_key_warning()
             logger.error("Refusing to start due to insecure SECRET_KEY")
-            sys.exit(1)
+            raise RuntimeError(
+                "Refusing to start: SECRET_KEY is set to the insecure default "
+                "value. Set the SUPERSET_SECRET_KEY environment variable (or "
+                "override SECRET_KEY in superset_config.py) to a strong, "
+                "randomly generated value before starting Superset. Generate "
+                "one with: openssl rand -base64 42. For more info, see: "
+                "https://superset.apache.org/docs/configuration/"
+                "configuring-superset#specifying-a-secret_key"
+            )
 
     def configure_session(self) -> None:
         if self.config["SESSION_SERVER_SIDE"]:
